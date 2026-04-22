@@ -7,7 +7,7 @@ import kotlin.reflect.KClass
 class SpatialIndexSystem(
     private val spatial: SpatialQueryService
 ) : System {
-    override fun update(world: World, delta: Int) {
+    override fun update() {
         spatial.rebuild()
     }
 

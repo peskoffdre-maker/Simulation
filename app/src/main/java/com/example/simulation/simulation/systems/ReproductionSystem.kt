@@ -1,59 +1,49 @@
 package com.example.simulation.simulation.systems
 
 import com.example.simulation.simulation.AgeComponent
-import com.example.simulation.simulation.CooldownComponent
-import com.example.simulation.simulation.CreatureStates
+import com.example.simulation.simulation.AgingStages
+import com.example.simulation.simulation.PlantCooldownComponent
 import com.example.simulation.simulation.DietComponent
 import com.example.simulation.simulation.EnergyComponent
+import com.example.simulation.simulation.EntitiesCollide
 import com.example.simulation.simulation.EntityId
-import com.example.simulation.simulation.FoodValueComponent
+import com.example.simulation.simulation.FoodEnergyComponent
+import com.example.simulation.simulation.GenerationComponent
+import com.example.simulation.simulation.GrowthRateComponent
 import com.example.simulation.simulation.HistoryComponent
+import com.example.simulation.simulation.Intents
 import com.example.simulation.simulation.PerceptionComponent
 import com.example.simulation.simulation.PositionComponent
 import com.example.simulation.simulation.ReproductionComponent
+import com.example.simulation.simulation.ReproductionEnergyCostComponent
+import com.example.simulation.simulation.ReproductionEnergyThresholdComponent
+import com.example.simulation.simulation.SimulationConfiguration.cooldownPerTick
 import com.example.simulation.simulation.SizeComponent
+import com.example.simulation.simulation.SpeedComponent
 import com.example.simulation.simulation.StateComponent
 import com.example.simulation.simulation.TargetComponent
 import com.example.simulation.simulation.VelocityComponent
 import com.example.simulation.simulation.World
 import com.example.simulation.simulation.factories.CreatureFactory
-import kotlin.collections.plusAssign
-import kotlin.math.max
-import kotlin.random.Random
+import com.example.simulation.simulation.factories.Offspring
 import kotlin.reflect.KClass
 
-
-data class ReproductiveCreature(
-    val id: EntityId,
-    val position: PositionComponent,
-    val velocity: VelocityComponent,
-    val perception: PerceptionComponent,
-    val size: SizeComponent,
-    val diet: DietComponent,
-    val reproduction: ReproductionComponent,
-    val history: HistoryComponent,
-    val age: AgeComponent,
-    val energy: EnergyComponent
-)
-
+/**
+ * Class manages reproduction of creatures.
+ */
 class ReproductionSystem(
+    private val world: World,
     private val width: Float,
     private val height: Float
 ) : System {
+    val creatureFactory = CreatureFactory(world, width, height)
 
-    override fun update(world: World, delta: Int) {
 
-        val creatureFactory = CreatureFactory(world, width, height)
-        val newborns = mutableListOf<EntityId>()
+    override fun update() {
 
-        for (entity in world.creatureTags) {
-            val parent = world.getReproductiveCreature(entity) ?: continue
-
-            val child = updateReproduction(parent, creatureFactory, delta)
-            if (child != null) newborns += child
-        }
-
-        world.creatureTags.addAll(newborns)
+        updateReproductionState()
+        reproduce()
+        addNewborns()
     }
 
     override fun reads(): List<KClass<*>> {
@@ -75,32 +65,103 @@ class ReproductionSystem(
             ReproductionComponent::class,
             HistoryComponent::class,
             AgeComponent::class,
-            FoodValueComponent::class,
-            CooldownComponent::class,
+            FoodEnergyComponent::class,
+            PlantCooldownComponent::class,
             TargetComponent::class,
         )
     }
 
-    private fun updateReproduction(
-        parent: ReproductiveCreature,
-        creatureFactory: CreatureFactory,
-        delta: Int
-    ): EntityId? {
+    private fun updateReproductionState()  {
+        for (entity in world.creatureTags) {
+            val parent = world.getReproductiveCreature(entity) ?: continue
 
-        parent.reproduction.cooldown += delta
-
-        val canReproduce =
-            parent.energy.energy > parent.reproduction.energyThreshold &&
-            parent.reproduction.cooldown >= parent.reproduction.maxCooldown
-
-        if (!canReproduce) return null
-
-        val offspring = creatureFactory.spawnCopy(parent)
-
-        parent.energy.energy -= parent.reproduction.energyCost
-        parent.reproduction.cooldown = 0
-
-        return offspring
+            parent.reproduction.canReproduce =
+                        parent.energy.currentEnergy > parent.reproductionEnergyThreshold.value &&
+                        parent.reproduction.cooldown <= 0 &&
+                        parent.age.agingStage == AgingStages.ADULT
+        }
     }
+
+    private fun reproduce() {
+
+        for (event in world.eventBus.getEvents()) {
+
+            if (event is EntitiesCollide) {
+                if (event.intent == Intents.REPRODUCE) {
+
+                    val parent = world.getReproductiveCreature(event.entityId) ?: continue
+
+                    if (event.targetId in world.creatureTags) {
+                        reproduceOnCollision(
+                            parent1 = parent,
+                            targetId = event.targetId,
+                            world = world,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun addNewborns(){
+        while (world.birthQ.isNotEmpty()) {
+            val newborn = world.birthQ.removeFirst()
+            val id = newborn.id
+            world.creatureTags.add(id)
+            world.genomes[id] = newborn.genome
+            world.positions[id] = newborn.position
+            world.perceptions[id] = newborn.perception
+            world.sizes[id] = newborn.size
+            world.growthRates[id] = newborn.growthRate
+            world.reproductions[id] = newborn.reproduction
+            world.sexes[id] = newborn.sex
+            world.reproductionEnergyThresholds[id] = newborn.reproductionEnergyThreshold
+            world.reproductionEnergyCosts[id] = newborn.reproductionEnergyCost
+            world.fertilities[id] = newborn.fertility
+            world.ages[id] = newborn.age
+            world.maturingRatios[id] = newborn.maturingRatio
+            world.agingRatios[id] = newborn.agingRatio
+            world.speeds[id] = newborn.speed
+            world.velocities[id] = newborn.velocity
+            world.energies[id] = newborn.energy
+            world.diets[id] = newborn.diet
+            world.generations[id] = newborn.generation
+            world.states[id] = newborn.state
+            world.histories[id] = newborn.history
+            world.colors[id] = newborn.color
+            world.targets[id] = newborn.target
+            world.powers[id] = newborn.power
+        }
+    }
+
+    private fun reproduceOnCollision(
+        parent1: World.ReproductiveCreature,
+        targetId: EntityId,
+        world: World,
+        )
+    {
+
+        val parent2 = world.getReproductiveCreature(targetId) ?: return
+
+        if (
+            !parent1.reproduction.canReproduce ||
+            !parent2.reproduction.canReproduce ||
+            !parent1.sex.value
+            ) return
+
+        val childrenNumber = (parent1.fertility.value + parent2.fertility.value).toInt()
+
+        repeat(childrenNumber) {
+            world.birthQ.addLast(creatureFactory.spawnOffspring(parent1, parent2))
+
+            parent1.energy.currentEnergy -= parent1.reproductionEnergyCost.value
+            parent2.energy.currentEnergy -= parent1.reproductionEnergyCost.value
+
+            parent1.reproduction.cooldown = 0
+            parent2.reproduction.cooldown = 0
+
+        }
+    }
+
 
 }

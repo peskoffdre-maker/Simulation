@@ -1,11 +1,15 @@
 package com.example.simulation.simulation.systems
 
 import com.example.simulation.simulation.AgeComponent
-import com.example.simulation.simulation.CooldownComponent
+import com.example.simulation.simulation.CreatureStates
+import com.example.simulation.simulation.PlantCooldownComponent
 import com.example.simulation.simulation.DietComponent
 import com.example.simulation.simulation.EnergyComponent
+import com.example.simulation.simulation.EnergyDepletedEvent
+import com.example.simulation.simulation.EntityDiedOfAgeEvent
 import com.example.simulation.simulation.EntityId
-import com.example.simulation.simulation.FoodValueComponent
+import com.example.simulation.simulation.EntityKilled
+import com.example.simulation.simulation.FoodEnergyComponent
 import com.example.simulation.simulation.HistoryComponent
 import com.example.simulation.simulation.PerceptionComponent
 import com.example.simulation.simulation.PositionComponent
@@ -15,21 +19,28 @@ import com.example.simulation.simulation.StateComponent
 import com.example.simulation.simulation.TargetComponent
 import com.example.simulation.simulation.VelocityComponent
 import com.example.simulation.simulation.World
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.iterator
 import kotlin.reflect.KClass
 
-class DeathSystem : System {
-    override fun update(world: World, delta: Int) {
-        val toRemove = mutableListOf<EntityId>()
 
-        for ((id, age) in world.ages) {
-            val energy = world.energies[id]
+/**
+ * Class manages dying of all entities with age components present.
+ *
+ */
+class DeathSystem(private val world: World) : System {
 
-            if (age.age >= age.maxAge || (energy != null && energy.energy <= 0f)) {
-                toRemove.add(id)
+    override fun update() {
+        for (event in world.eventBus.getEvents()) {
+            when (event) {
+                is EnergyDepletedEvent -> world.states[event.entityId]?.state = CreatureStates.DECAYING
+                is EntityDiedOfAgeEvent -> world.states[event.entityId]?.state = CreatureStates.DECAYING
+                is EntityKilled -> world.states[event.entityId]?.state = CreatureStates.DECAYING
             }
         }
+        removeDead()
 
-        toRemove.forEach { removeEntity(world, it) }
     }
 
     override fun reads(): List<KClass<*>> {
@@ -51,13 +62,20 @@ class DeathSystem : System {
             ReproductionComponent::class,
             HistoryComponent::class,
             AgeComponent::class,
-            FoodValueComponent::class,
-            CooldownComponent::class,
+            FoodEnergyComponent::class,
+            PlantCooldownComponent::class,
             TargetComponent::class,
         )
     }
 
-    private fun removeEntity(world: World, entityId: EntityId) {
+    private fun removeDead() {
+        while (world.deathQ.isNotEmpty()) {
+            val entity = world.deathQ.removeFirst()
+            removeEntity(entity)
+        }
+    }
+
+    private fun removeEntity(entityId: EntityId) {
         world.allComponents.forEach { it.remove(entityId) }
         world.allTags.forEach { it.remove(entityId) }
     }

@@ -1,5 +1,6 @@
 package com.example.simulation.simulation
 
+import androidx.compose.ui.graphics.Color
 import com.example.simulation.simulation.SimulationConfiguration.creatureInitialSizeMultiplier
 
 
@@ -8,6 +9,8 @@ data class CreatureRenderModel(
     val x: Float,
     val y: Float,
     val size: Float,
+    val color: Color,
+    val diet: Diets,
 )
 
 data class PlantRenderModel(
@@ -39,7 +42,9 @@ class SnapshotBuilder() {
         for (creature in world.creatureTags) {
 
             val position = world.positions[creature] ?: continue
-            val size = world.sizes[creature]?.size ?: creatureInitialSizeMultiplier
+            val size = world.sizes[creature]?.value ?: creatureInitialSizeMultiplier
+            val color = world.colors[creature]?.color ?: continue
+            val diet = world.diets[creature]?.diet ?: continue
 
             creatureList.add(
                 CreatureRenderModel(
@@ -47,6 +52,8 @@ class SnapshotBuilder() {
                     x = position.x,
                     y = position.y,
                     size = size,
+                    color = color,
+                    diet = diet
                 )
             )
         }

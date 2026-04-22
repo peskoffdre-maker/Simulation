@@ -2,17 +2,13 @@ package com.example.simulation.simulation.systems
 
 import com.example.simulation.simulation.AgeComponent
 import com.example.simulation.simulation.EntityId
+import com.example.simulation.simulation.SimulationConfiguration.agingPerTick
 import com.example.simulation.simulation.World
-import com.example.simulation.simulation.factories.FoodFactory
 import kotlin.reflect.KClass
 
-class FoodSystem(
-): System {
+class FoodSystem(private val world: World) : System {
 
-    override fun update(world: World, delta: Int) {
-        for (food in world.foodTags) {
-            updateFood(food, world, delta)
-        }
+    override fun update() {
     }
 
     override fun reads(): List<KClass<*>> {
@@ -25,10 +21,6 @@ class FoodSystem(
         return listOf(
             AgeComponent::class,
         )
-    }
-
-    private fun updateFood(food: EntityId, world: World, delta: Int) {
-        world.ages[food]?.age += delta
     }
 }
 

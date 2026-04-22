@@ -29,15 +29,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PointMode
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContentProviderCompat.requireContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.simulation.simViewModel.SimulationStates
 import com.example.simulation.simViewModel.SimulationViewModel
 import com.example.simulation.simulation.CreatureRenderModel
+import com.example.simulation.simulation.Diets
 
 
 // Screen with running simulation
@@ -56,6 +60,7 @@ fun SimulationScreen(
     var canvasHeight by remember { mutableFloatStateOf(0f) }
 
     var showControls by remember { mutableStateOf(false) }
+
     Scaffold(
         floatingActionButton = {
             FloatingActionButton(
@@ -71,7 +76,6 @@ fun SimulationScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-
             // Full screen canvas
             SimulationCanvas(
                 creatures = snapshot.creatures,
@@ -86,17 +90,27 @@ fun SimulationScreen(
             )
 
             // Floating control panel
+            var selectedSpeed by remember { mutableIntStateOf(1) }
+            val onSpeedChange = {speed: Int -> selectedSpeed = speed}
+
             if (showControls) {
                 SimulationControlsPanel(
                     simulationState = simulationState,
                     viewModel = viewModel,
                     width = canvasWidth,
                     height = canvasHeight,
+                    selectedSpeed = selectedSpeed,
+                    onSpeedChange = onSpeedChange,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 10.dp)
                 )
             }
+
+            Text(
+                text = "${snapshot.population}",
+                modifier = Modifier.align(Alignment.TopEnd)
+            )
         }
     }
 
@@ -118,11 +132,19 @@ fun SimulationCanvas(
             }
     ) {
         creatures.forEach { creature ->
-            drawCircle(
-                color = Color.Blue,
-                radius = creature.size,
-                center = Offset(creature.x, creature.y)
-            )
+            if (creature.diet == Diets.HERBIVORE) {
+                drawCircle(
+                    color = creature.color,
+                    radius = creature.size,
+                    center = Offset(creature.x, creature.y)
+                )
+            } else if (creature.diet == Diets.CARNIVORE) {
+                drawCircle(
+                    color = Color.Red,
+                    radius = creature.size,
+                    center = Offset(creature.x, creature.y)
+                )
+            }
         }
         drawPoints(
                 points = plantPoints,
@@ -148,8 +170,11 @@ fun SimulationControlsPanel(
     viewModel: SimulationViewModel,
     width: Float,
     height: Float,
+    selectedSpeed: Int,
+    onSpeedChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     Column (
         modifier = modifier
             .fillMaxWidth()
@@ -168,8 +193,11 @@ fun SimulationControlsPanel(
             Button(
                 onClick = {
                     when(simulationState) {
-                        SimulationStates.STOPPED -> viewModel.start(width, height, 100, 20)
-                        else -> viewModel.stop()
+                        SimulationStates.STOPPED -> viewModel.start(width, height, 100, 100)
+                        else -> {
+                            viewModel.saveStatistics(context = context)
+                            viewModel.stop()
+                        }
                     }
                 },
             ) { Text(text = when(simulationState) {
@@ -204,13 +232,12 @@ fun SimulationControlsPanel(
                 )
             }
             val speeds = listOf(1, 2, 3, 4)
-            var selectedSpeed by remember { mutableIntStateOf(1) }
 
             Row {
                 speeds.forEach { speed ->
                     Button(
                         onClick = {
-                            selectedSpeed = speed
+                            onSpeedChange(speed)
                             viewModel.changeSimulationSpeed(speed)
                         },
                         colors = ButtonDefaults.buttonColors(

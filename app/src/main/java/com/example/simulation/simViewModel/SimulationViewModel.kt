@@ -1,5 +1,6 @@
 package com.example.simulation.simViewModel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.simulation.simulation.RenderSnapshot
@@ -14,10 +15,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
+import java.io.File
 import kotlin.math.max
+import kotlin.math.round
+import kotlin.math.sqrt
 
-class SimulationViewModel: ViewModel() {
+class SimulationViewModel(): ViewModel() {
     private var engine: SimulationEngine? = null
+
 
     // State flow for creatures. UI reacts to change in this flow and recomposes
     private val _snapshot = MutableStateFlow(
@@ -37,6 +42,9 @@ class SimulationViewModel: ViewModel() {
     // Job to pause and resume simulation
     private var simulationJob: Job? = null
     private val frameTime = 16L
+
+    private var _simulationSpeed = 1
+    val simulationSpeed = _simulationSpeed
 
     // Runs simulation in 60 FPS
     private suspend fun simulationRun() {
@@ -83,6 +91,8 @@ class SimulationViewModel: ViewModel() {
 
     fun stop() {
         engine?.statisticsService?.printSimulationStateIntoConsole() ?: println("No stats found")
+        // ----------------
+        // -----------------
         simulationJob?.cancel()
         simulationJob = null
         engine = null
@@ -97,6 +107,10 @@ class SimulationViewModel: ViewModel() {
 
     fun changeSimulationSpeed(value: Int) {
         engine?.setDelta(value) ?: return
+    }
+    fun saveStatistics(context: Context) {
+        val file = File(context.filesDir, "statistics.txt")
+        engine?.statisticsService?.printStatistic(file) ?: println("No statistic found")
     }
 }
 
